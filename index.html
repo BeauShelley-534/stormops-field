@@ -153,6 +153,11 @@
       <button class="chip" data-filter="submitted" onclick="setFilter('submitted')">Submitted</button>
       <button class="chip" data-filter="all" onclick="setFilter('all')">All</button>
     </div>
+    <div style="margin-bottom:14px;">
+      <input class="input" id="searchBox" type="search" inputmode="search"
+             autocapitalize="none" autocorrect="off" spellcheck="false"
+             placeholder="Search incident number…" oninput="onSearch(this.value)" />
+    </div>
     <div id="incList"></div>
   </div>
 
@@ -193,6 +198,7 @@ let ME = '';                 // crew display name (entered at login)
 let CREW_NAME = '';          // name typed on the login form
 let INCIDENTS = {};          // id -> incident (from cloud)
 let FILTER = 'active';
+let SEARCH = '';             // incident-number search text
 let OPEN_ID = null;          // currently opened incident id
 let SCOPING = null;          // working copy of open incident's scopingData
 let fieldMap = null;         // Leaflet map
@@ -286,6 +292,11 @@ function setFilter(f) {
   renderList();
 }
 
+function onSearch(v) {
+  SEARCH = v || '';
+  renderList();
+}
+
 function incArray() {
   return Object.keys(INCIDENTS).map(id => Object.assign({ _id: id }, INCIDENTS[id]));
 }
@@ -296,7 +307,12 @@ function renderList() {
   document.getElementById('scopeView').classList.add('hidden');
   const list = document.getElementById('incList');
   let items = incArray();
-  if (FILTER === 'active') items = items.filter(i => !!i.toDo && (statusOf(i) === 'available' || statusOf(i) === 'locked'));
+  const q = SEARCH.trim().toLowerCase();
+  if (q) {
+    // Number search overrides the tab filter so any incident can be found by number.
+    items = items.filter(i => String(i.number || i._id).toLowerCase().includes(q));
+  }
+  else if (FILTER === 'active') items = items.filter(i => !!i.toDo && (statusOf(i) === 'available' || statusOf(i) === 'locked'));
   else if (FILTER === 'mine') items = items.filter(i => i.lockedBy === ME || i.scopedBy === ME);
   else if (FILTER === 'submitted') items = items.filter(i => statusOf(i) === 'submitted');
 
@@ -304,7 +320,7 @@ function renderList() {
 
   renderMarkers(items);
 
-  if (!items.length) { list.innerHTML = `<div class="empty">${FILTER === 'active' ? 'No jobs on the To&nbsp;Do list yet.' : 'No incidents here yet.'}</div>`; return; }
+  if (!items.length) { list.innerHTML = `<div class="empty">${q ? 'No incidents match your search.' : (FILTER === 'active' ? 'No jobs on the To&nbsp;Do list yet.' : 'No incidents here yet.')}</div>`; return; }
   list.innerHTML = items.map(inc => {
     const st = statusOf(inc);
     const mine = inc.lockedBy === ME;
