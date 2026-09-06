@@ -1,0 +1,534 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+<title>StormOps Field — Endeavour Energy</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+  :root {
+    --ee-bg:#0e1116; --ee-panel:#151a21; --ee-panel2:#1b222b; --ee-border:#2a333f;
+    --ee-accent:#4fc3f7; --ee-text:#e6edf3; --ee-muted:#8b98a5;
+    --available:#4fc3f7; --locked:#f4b740; --submitted:#6b7280; --danger:#ff6f61; --ok:#3ecf8e;
+  }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  body { margin:0; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+         background:var(--ee-bg); color:var(--ee-text); font-size:15px; }
+  header { position:sticky; top:0; z-index:10; background:var(--ee-panel); border-bottom:1px solid var(--ee-border);
+           padding:12px 16px; display:flex; align-items:center; justify-content:space-between; }
+  header .brand { font-weight:700; letter-spacing:.5px; }
+  header .brand small { color:var(--ee-muted); font-weight:400; margin-left:6px; }
+  button { font-family:inherit; cursor:pointer; }
+  .btn { background:var(--ee-accent); color:#04121b; border:none; border-radius:8px; padding:11px 16px;
+         font-weight:700; font-size:15px; }
+  .btn:disabled { opacity:.5; }
+  .btn-ghost { background:transparent; border:1px solid var(--ee-border); color:var(--ee-text); }
+  .btn-warn { background:var(--locked); color:#251c00; }
+  .btn-ok { background:var(--ok); color:#04120a; }
+  .btn-danger { background:transparent; border:1px solid var(--danger); color:var(--danger); }
+  .wrap { max-width:760px; margin:0 auto; padding:16px; }
+
+  /* Login */
+  #login { min-height:100vh; display:flex; align-items:center; justify-content:center; padding:24px; }
+  #login .card { width:100%; max-width:360px; background:var(--ee-panel); border:1px solid var(--ee-border);
+                 border-radius:14px; padding:28px 24px; }
+  #login h1 { margin:0 0 4px; font-size:22px; }
+  #login p { margin:0 0 20px; color:var(--ee-muted); font-size:13px; }
+  .field { margin-bottom:14px; }
+  .field label { display:block; font-size:12px; color:var(--ee-muted); margin-bottom:5px; }
+  .input { width:100%; background:var(--ee-panel2); border:1px solid var(--ee-border); color:var(--ee-text);
+           border-radius:8px; padding:12px; font-size:15px; }
+  .err { color:var(--danger); font-size:13px; margin-top:10px; min-height:18px; }
+
+  /* List */
+  .filterbar { display:flex; gap:8px; margin-bottom:14px; flex-wrap:wrap; }
+  .chip { background:var(--ee-panel2); border:1px solid var(--ee-border); color:var(--ee-muted);
+          border-radius:20px; padding:6px 13px; font-size:13px; }
+  .chip.active { background:var(--ee-accent); color:#04121b; border-color:var(--ee-accent); font-weight:600; }
+  .inc { background:var(--ee-panel); border:1px solid var(--ee-border); border-radius:10px; padding:14px;
+         margin-bottom:10px; }
+  .inc-top { display:flex; justify-content:space-between; align-items:flex-start; gap:10px; }
+  .inc-num { font-weight:700; }
+  .inc-type { color:var(--ee-muted); font-size:12px; margin-top:2px; }
+  .inc-loc { color:var(--ee-text); font-size:13px; margin-top:8px; }
+  .inc-prob { color:var(--ee-muted); font-size:12px; margin-top:6px; line-height:1.4; }
+  .pill { font-size:11px; font-weight:700; padding:4px 9px; border-radius:20px; white-space:nowrap; }
+  .pill-available { background:rgba(79,195,247,.15); color:var(--available); }
+  .pill-locked { background:rgba(244,183,64,.15); color:var(--locked); }
+  .pill-mine { background:rgba(62,207,142,.15); color:var(--ok); }
+  .pill-submitted { background:rgba(107,114,128,.2); color:#aab4bf; }
+  .muted { color:var(--ee-muted); }
+  .empty { text-align:center; color:var(--ee-muted); padding:40px 0; }
+
+  /* Map */
+  .map-wrap { position:relative; margin-bottom:14px; }
+  #map { height:300px; border-radius:12px; overflow:hidden; border:1px solid var(--ee-border); background:var(--ee-panel2); }
+  .locate-btn { position:absolute; z-index:500; right:10px; bottom:10px; background:var(--ee-panel);
+                border:1px solid var(--ee-border); color:var(--ee-text); border-radius:8px; padding:8px 11px; font-size:13px; }
+  .leaflet-popup-content { margin:10px 12px; font-size:13px; }
+  .leaflet-popup-content b { color:#0b1622; }
+  .popup-btn { display:inline-block; margin-top:8px; background:var(--ee-accent); color:#04121b;
+               border:none; border-radius:6px; padding:6px 12px; font-weight:700; font-size:12px; cursor:pointer; }
+
+  /* Scope view */
+  .section-title { font-size:12px; text-transform:uppercase; letter-spacing:.6px; color:var(--ee-muted);
+                   margin:22px 0 10px; border-bottom:1px solid var(--ee-border); padding-bottom:6px; }
+  .req { color:var(--danger); }
+  textarea.input { min-height:120px; resize:vertical; }
+  .checkrow { display:flex; align-items:center; gap:10px; padding:9px 0; border-bottom:1px solid var(--ee-border); }
+  .checkrow input { width:20px; height:20px; }
+  .thumbs { display:flex; flex-wrap:wrap; gap:8px; margin-top:10px; }
+  .thumb { position:relative; width:84px; height:84px; border-radius:8px; overflow:hidden; border:1px solid var(--ee-border); }
+  .thumb img { width:100%; height:100%; object-fit:cover; }
+  .thumb .del { position:absolute; top:2px; right:2px; background:rgba(0,0,0,.6); color:#fff; border:none;
+                border-radius:50%; width:22px; height:22px; font-size:13px; line-height:1; }
+  .upload { display:inline-flex; align-items:center; gap:8px; background:var(--ee-panel2);
+            border:1px dashed var(--ee-border); border-radius:8px; padding:11px 16px; color:var(--ee-accent);
+            font-size:14px; font-weight:600; margin-top:10px; }
+  .upload input { display:none; }
+  .dmg { background:var(--ee-panel2); border:1px solid var(--ee-border); border-radius:10px; padding:12px; margin-bottom:10px; }
+  .dmg .row { display:flex; gap:8px; margin-bottom:8px; align-items:center; }
+  .actions { position:sticky; bottom:0; background:var(--ee-panel); border-top:1px solid var(--ee-border);
+             padding:12px 16px; display:flex; gap:10px; margin:20px -16px -16px; }
+  .actions .btn { flex:1; }
+  .hidden { display:none !important; }
+  .back { background:transparent; border:none; color:var(--ee-accent); font-size:15px; padding:0; margin-bottom:6px; }
+  .banner { border-radius:8px; padding:10px 14px; font-size:13px; margin-bottom:14px; }
+  .banner-mine { background:rgba(62,207,142,.1); border:1px solid var(--ok); }
+  .banner-other { background:rgba(244,183,64,.1); border:1px solid var(--locked); }
+  .banner-sub { background:rgba(107,114,128,.12); border:1px solid var(--submitted); }
+  .toast { position:fixed; bottom:80px; left:50%; transform:translateX(-50%); background:#04121b;
+           border:1px solid var(--ee-accent); color:var(--ee-text); padding:10px 18px; border-radius:24px;
+           font-size:13px; z-index:50; opacity:0; transition:opacity .2s; }
+  .toast.show { opacity:1; }
+</style>
+</head>
+<body>
+
+<!-- ============ LOGIN ============ -->
+<div id="login">
+  <div class="card">
+    <h1>StormOps <span style="color:var(--ee-accent)">Field</span></h1>
+    <p>Endeavour Energy — sign in to scope incidents</p>
+    <div class="field">
+      <label>Username</label>
+      <input class="input" id="email" type="text" autocomplete="username"
+             autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="scope1" />
+    </div>
+    <div class="field">
+      <label>Password</label>
+      <input class="input" id="password" type="password" autocomplete="current-password"
+             placeholder="••••••••" onkeydown="if(event.key==='Enter')doLogin()" />
+    </div>
+    <button class="btn" style="width:100%;margin-top:6px;" id="loginBtn" onclick="doLogin()">Sign in</button>
+    <div class="err" id="loginErr"></div>
+  </div>
+</div>
+
+<!-- ============ APP ============ -->
+<div id="app" class="hidden">
+  <header>
+    <div class="brand">StormOps <small>Field</small></div>
+    <div style="display:flex;align-items:center;gap:12px;">
+      <span class="muted" id="whoami" style="font-size:12px;"></span>
+      <button class="btn-ghost" style="padding:6px 12px;font-size:13px;border-radius:8px;" onclick="doLogout()">Sign out</button>
+    </div>
+  </header>
+
+  <!-- List view -->
+  <div class="wrap" id="listView">
+    <div class="map-wrap">
+      <div id="map"></div>
+      <button class="locate-btn" onclick="locateMe()">📍 Locate me</button>
+    </div>
+    <div class="filterbar filterbar" style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;">
+      <button class="chip active" data-filter="active" onclick="setFilter('active')">To do</button>
+      <button class="chip" data-filter="mine" onclick="setFilter('mine')">My jobs</button>
+      <button class="chip" data-filter="submitted" onclick="setFilter('submitted')">Submitted</button>
+      <button class="chip" data-filter="all" onclick="setFilter('all')">All</button>
+    </div>
+    <div id="incList"></div>
+  </div>
+
+  <!-- Scope view -->
+  <div class="wrap hidden" id="scopeView"></div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<!-- Firebase SDK (compat) -->
+<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-database-compat.js"></script>
+
+<script>
+// ============================================================
+// Config — same project as the pump. Field client talks DIRECTLY to
+// Firebase; Security Rules enforce what it may read/write.
+// ============================================================
+const FIREBASE_CONFIG = {
+  apiKey: "AIzaSyC2DynG8UsYnC9-mNxfYfax2dYYGtbYx54",
+  authDomain: "fathers-day-storm.firebaseapp.com",
+  databaseURL: "https://fathers-day-storm-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "fathers-day-storm",
+  storageBucket: "fathers-day-storm.firebasestorage.app",
+  messagingSenderId: "86964844412",
+  appId: "1:86964844412:web:ebbdbd4cdf4c32e9a116f9"
+};
+const ROOM = new URLSearchParams(location.search).get('room') || 'default';
+const ROOT = 'stormopsPublic/' + ROOM + '/incidents';
+const FIELD_EMAIL_DOMAIN = 'stormops.local';   // crews type just "scope1"; we add this
+
+firebase.initializeApp(FIREBASE_CONFIG);
+const auth = firebase.auth();
+const db = firebase.database();
+
+let ME = '';                 // display name (email local part)
+let INCIDENTS = {};          // id -> incident (from cloud)
+let FILTER = 'active';
+let OPEN_ID = null;          // currently opened incident id
+let SCOPING = null;          // working copy of open incident's scopingData
+let fieldMap = null;         // Leaflet map
+let markers = {};            // id -> marker
+let userMarker = null;
+
+// ---------- Photo compression ----------
+const MAX_DIM = 1280, JPEG_Q = 0.6;
+function compressImage(file) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      let { width, height } = img;
+      if (width > height && width > MAX_DIM) { height = Math.round(height * MAX_DIM / width); width = MAX_DIM; }
+      else if (height >= width && height > MAX_DIM) { width = Math.round(width * MAX_DIM / height); height = MAX_DIM; }
+      const c = document.createElement('canvas'); c.width = width; c.height = height;
+      c.getContext('2d').drawImage(img, 0, 0, width, height);
+      resolve(c.toDataURL('image/jpeg', JPEG_Q));
+    };
+    img.onerror = reject;
+    img.src = url;
+  });
+}
+
+// ---------- Auth ----------
+function doLogin() {
+  let user = document.getElementById('email').value.trim().toLowerCase();
+  const pw = document.getElementById('password').value;
+  const err = document.getElementById('loginErr');
+  err.textContent = '';
+  if (!user || !pw) { err.textContent = 'Enter username and password.'; return; }
+  const email = user.includes('@') ? user : user + '@' + FIELD_EMAIL_DOMAIN;
+  document.getElementById('loginBtn').disabled = true;
+  auth.signInWithEmailAndPassword(email, pw)
+    .catch(e => { err.textContent = friendlyAuthError(e); })
+    .finally(() => { document.getElementById('loginBtn').disabled = false; });
+}
+function doLogout() { auth.signOut(); }
+function friendlyAuthError(e) {
+  const c = (e && e.code) || '';
+  if (c.includes('invalid-credential') || c.includes('wrong-password') || c.includes('user-not-found'))
+    return 'Wrong email or password.';
+  if (c.includes('too-many-requests')) return 'Too many attempts. Wait a moment and try again.';
+  if (c.includes('network')) return 'Network error — check your connection.';
+  return (e && e.message) || 'Sign-in failed.';
+}
+
+auth.onAuthStateChanged(user => {
+  if (user) {
+    ME = (user.email || 'field').split('@')[0];
+    document.getElementById('whoami').textContent = ME;
+    document.getElementById('login').classList.add('hidden');
+    document.getElementById('app').classList.remove('hidden');
+    subscribe();
+  } else {
+    document.getElementById('app').classList.add('hidden');
+    document.getElementById('login').classList.remove('hidden');
+    document.getElementById('password').value = '';
+  }
+});
+
+// ---------- Data ----------
+function subscribe() {
+  db.ref(ROOT).on('value', snap => {
+    INCIDENTS = snap.val() || {};
+    if (OPEN_ID) {
+      // Refresh open incident if it changed remotely and we're not mid-edit-lock.
+      if (!INCIDENTS[OPEN_ID]) { closeScope(); }
+      else { renderScope(); }
+    } else {
+      renderList();
+    }
+  }, err => { console.warn('read failed', err); });
+}
+
+function setFilter(f) {
+  FILTER = f;
+  document.querySelectorAll('.chip').forEach(c => c.classList.toggle('active', c.dataset.filter === f));
+  renderList();
+}
+
+function incArray() {
+  return Object.keys(INCIDENTS).map(id => Object.assign({ _id: id }, INCIDENTS[id]));
+}
+function statusOf(inc) { return inc.status || 'available'; }
+
+function renderList() {
+  document.getElementById('listView').classList.remove('hidden');
+  document.getElementById('scopeView').classList.add('hidden');
+  const list = document.getElementById('incList');
+  let items = incArray();
+  if (FILTER === 'active') items = items.filter(i => statusOf(i) === 'available' || (statusOf(i) === 'locked'));
+  else if (FILTER === 'mine') items = items.filter(i => i.lockedBy === ME || i.scopedBy === ME);
+  else if (FILTER === 'submitted') items = items.filter(i => statusOf(i) === 'submitted');
+
+  items.sort((a, b) => String(a.number || a._id).localeCompare(String(b.number || b._id)));
+
+  renderMarkers(items);
+
+  if (!items.length) { list.innerHTML = `<div class="empty">No incidents here yet.</div>`; return; }
+  list.innerHTML = items.map(inc => {
+    const st = statusOf(inc);
+    const mine = inc.lockedBy === ME;
+    const pill = st === 'submitted' ? `<span class="pill pill-submitted">Submitted</span>`
+      : (st === 'locked' && mine) ? `<span class="pill pill-mine">Scoping — you</span>`
+      : (st === 'locked') ? `<span class="pill pill-locked">Locked — ${escapeHtml(inc.lockedBy || '')}</span>`
+      : `<span class="pill pill-available">To scope</span>`;
+    return `<div class="inc" onclick="openScope('${inc._id}')">
+      <div class="inc-top">
+        <div>
+          <div class="inc-num">${escapeHtml(inc.number || inc._id)}</div>
+          <div class="inc-type">${escapeHtml(inc.type || '')}</div>
+        </div>${pill}
+      </div>
+      ${inc.suburb ? `<div class="inc-loc">📍 ${escapeHtml(inc.suburb)}</div>` : ''}
+      ${inc.problems ? `<div class="inc-prob">${escapeHtml(inc.problems)}</div>` : ''}
+    </div>`;
+  }).join('');
+}
+
+function openScope(id) { OPEN_ID = id; SCOPING = null; renderScope(); }
+function closeScope() { OPEN_ID = null; SCOPING = null; renderList(); }
+
+// ---------- Map ----------
+function ensureMap() {
+  if (fieldMap) return;
+  fieldMap = L.map('map', { zoomControl: true }).setView([-34.15, 150.65], 10);
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+    { attribution: '© CartoDB', maxZoom: 19 }).addTo(fieldMap);
+}
+function incidentColor(inc) {
+  const st = statusOf(inc);
+  if (st === 'submitted') return '#6B7280';
+  if (st === 'locked') return '#FF8C42';
+  if (inc.type === 'Unplanned Outage') return '#FF4757';
+  return '#4FC3F7';
+}
+function makeIcon(inc) {
+  const color = incidentColor(inc);
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="28" height="38" viewBox="0 0 28 38">
+    <path d="M14 0 C6.3 0 0 6.3 0 14 C0 24.5 14 38 14 38 C14 38 28 24.5 28 14 C28 6.3 21.7 0 14 0Z" fill="${color}" opacity="0.9"/>
+    ${inc.type === 'Unplanned Outage'
+      ? `<polygon points="14,6 17,14 14,12 17,22 11,13 14,15" fill="white" stroke="white" stroke-width="0.5"/>`
+      : `<circle cx="14" cy="14" r="5" fill="white" opacity="0.9"/>`}
+    ${statusOf(inc) === 'locked' ? `<circle cx="22" cy="6" r="5" fill="#FFD166" stroke="#1a1c2e" stroke-width="1"/>` : ''}
+  </svg>`;
+  return L.divIcon({ html: svg, className: '', iconSize: [28, 38], iconAnchor: [14, 38], popupAnchor: [0, -38] });
+}
+function renderMarkers(items) {
+  ensureMap();
+  setTimeout(() => fieldMap.invalidateSize(), 0);   // container may have been hidden
+  Object.values(markers).forEach(m => fieldMap.removeLayer(m));
+  markers = {};
+  const pts = [];
+  items.forEach(inc => {
+    if (inc.lat == null || inc.lng == null) return;
+    const num = escapeHtml(inc.number || inc._id);
+    const popup = `<b>${num}</b>${inc.suburb ? '<br>' + escapeHtml(inc.suburb) : ''}` +
+      `<br><small>${escapeHtml(inc.type || '')}</small>` +
+      `<br><button class="popup-btn" onclick="openScope('${inc._id}')">Open →</button>`;
+    const m = L.marker([inc.lat, inc.lng], { icon: makeIcon(inc) }).addTo(fieldMap).bindPopup(popup);
+    markers[inc._id] = m; pts.push([inc.lat, inc.lng]);
+  });
+  if (pts.length) { try { fieldMap.fitBounds(pts, { padding: [40, 40], maxZoom: 14 }); } catch (e) {} }
+}
+function locateMe() {
+  if (!navigator.geolocation) { toast('Location not supported'); return; }
+  navigator.geolocation.getCurrentPosition(pos => {
+    const { latitude: lat, longitude: lng } = pos.coords;
+    ensureMap();
+    if (userMarker) fieldMap.removeLayer(userMarker);
+    userMarker = L.circleMarker([lat, lng], { radius: 8, color: '#fff', weight: 2, fillColor: '#4FC3F7', fillOpacity: 1 })
+      .addTo(fieldMap).bindPopup('You are here');
+    fieldMap.setView([lat, lng], 15);
+  }, () => toast('Could not get your location'), { enableHighAccuracy: true, timeout: 8000 });
+}
+
+function defaultScoping() {
+  return { comments:'', intermix:false, trafficControl:false, serviceWorkOnly:false,
+           treeLoppersRequired:false, nddRequired:false, networkCondition:'Not attended',
+           photos:[], customerDamage:[] };
+}
+
+function renderScope() {
+  const inc = INCIDENTS[OPEN_ID];
+  if (!inc) { closeScope(); return; }
+  document.getElementById('listView').classList.add('hidden');
+  const view = document.getElementById('scopeView');
+  view.classList.remove('hidden');
+
+  const st = statusOf(inc);
+  const mine = st === 'locked' && inc.lockedBy === ME;
+  const other = st === 'locked' && inc.lockedBy !== ME;
+  const submitted = st === 'submitted';
+  const editable = mine;
+
+  // Working copy of scoping only exists while we hold the lock.
+  if (editable && !SCOPING) SCOPING = Object.assign(defaultScoping(), inc.scopingData || {});
+  if (!editable) SCOPING = Object.assign(defaultScoping(), inc.scopingData || {});
+  const sd = SCOPING;
+
+  let banner = '';
+  if (other) banner = `<div class="banner banner-other">🔒 Being scoped by <b>${escapeHtml(inc.lockedBy)}</b>. Read-only until released.</div>`;
+  else if (mine) banner = `<div class="banner banner-mine">✏️ You locked this for scoping. Fill the fields and press <b>Submit</b>.</div>`;
+  else if (submitted) banner = `<div class="banner banner-sub">✓ Submitted by ${escapeHtml(inc.scopedBy || '')} — read-only.</div>`;
+
+  const dis = editable ? '' : 'disabled';
+  view.innerHTML = `
+    <button class="back" onclick="closeScope()">← All incidents</button>
+    <div class="inc-num" style="font-size:19px;">${escapeHtml(inc.number || inc._id)}</div>
+    <div class="inc-type">${escapeHtml(inc.type || '')} ${inc.sourceStatus ? '· ' + escapeHtml(inc.sourceStatus) : ''}</div>
+    ${inc.suburb ? `<div class="inc-loc">📍 ${escapeHtml(inc.suburb)}${inc.lat && inc.lng ? ` · <a href="https://www.google.com/maps?q=${inc.lat},${inc.lng}" target="_blank" style="color:var(--ee-accent);">Map</a>` : ''}</div>` : ''}
+    ${inc.problems ? `<div class="inc-prob">${escapeHtml(inc.problems)}</div>` : ''}
+    ${banner}
+
+    <div class="section-title">Scoping comments <span class="req">*</span></div>
+    <textarea class="input" id="f_comments" ${dis} placeholder="Site conditions, fault details, repair requirements...">${escapeHtml(sd.comments || '')}</textarea>
+
+    <div class="section-title">Site conditions</div>
+    ${checkRow('f_intermix', 'Signs of intermix (HV/LV contact)', sd.intermix, dis)}
+    ${checkRow('f_traffic', 'Traffic control required', sd.trafficControl, dis)}
+    ${checkRow('f_service', 'Service work only', sd.serviceWorkOnly, dis)}
+    ${checkRow('f_tree', 'Tree loppers required', sd.treeLoppersRequired, dis)}
+    ${checkRow('f_ndd', 'NDD required', sd.nddRequired, dis)}
+    <div class="field" style="margin-top:12px;">
+      <label style="font-size:12px;color:var(--ee-muted);">Network condition</label>
+      <select class="input" id="f_network" ${dis}>
+        ${['AA Onsite','Isolated/Earthed','Not attended'].map(o => `<option ${(sd.networkCondition||'Not attended')===o?'selected':''}>${o}</option>`).join('')}
+      </select>
+    </div>
+
+    <div class="section-title">Site photos <span class="req">*</span></div>
+    ${editable ? `<label class="upload">📷 Add site photos<input type="file" accept="image/*" capture="environment" multiple onchange="addSitePhotos(event)"></label>` : ''}
+    <div class="thumbs" id="siteThumbs">${(sd.photos||[]).map((p,i)=>thumb(p,i,'site',editable)).join('')}</div>
+
+    <div class="section-title">Customer installation damage</div>
+    <div id="dmgList">${(sd.customerDamage||[]).map((d,i)=>dmgCard(d,i,editable)).join('')}</div>
+    ${editable ? `<button class="btn-ghost" style="border-radius:8px;padding:9px 14px;font-size:13px;" onclick="addDmg()">+ Add damage address</button>` : ''}
+
+    ${editable ? `<div class="actions">
+        <button class="btn-danger" style="flex:0 0 auto;border-radius:8px;padding:11px 14px;" onclick="releaseLock()">Release</button>
+        <button class="btn-ok" onclick="submitScope()">Submit</button>
+      </div>`
+      : (!other && !submitted) ? `<div class="actions"><button class="btn" onclick="lockIncident()">Scope this incident</button></div>` : ''}
+  `;
+
+  if (editable) wireScopeInputs();
+}
+
+function checkRow(id, label, checked, dis) {
+  return `<label class="checkrow"><input type="checkbox" id="${id}" ${checked?'checked':''} ${dis}><span>${label}</span></label>`;
+}
+function thumb(dataUrl, idx, kind, editable) {
+  return `<div class="thumb"><img src="${dataUrl}">${editable?`<button class="del" onclick="delPhoto('${kind}',${idx})">×</button>`:''}</div>`;
+}
+function dmgCard(d, i, editable) {
+  const dis = editable ? '' : 'disabled';
+  return `<div class="dmg">
+    <div class="row"><input class="input" placeholder="Address" value="${escapeHtml(d.address||'')}" ${dis} onchange="updDmg(${i},'address',this.value)"></div>
+    <div class="row"><input class="input" placeholder="Comments" value="${escapeHtml(d.comments||'')}" ${dis} onchange="updDmg(${i},'comments',this.value)"></div>
+    <div class="row" style="justify-content:space-between;">
+      <label class="checkrow" style="border:none;padding:0;"><input type="checkbox" ${d.contactMade?'checked':''} ${dis} onchange="updDmg(${i},'contactMade',this.checked)"><span>Contact made</span></label>
+      ${editable?`<button class="btn-danger" style="border-radius:8px;padding:6px 10px;font-size:12px;" onclick="delDmg(${i})">Remove</button>`:''}
+    </div>
+    ${editable?`<label class="upload" style="margin-top:4px;">📷 Photos (${(d.photos||[]).length})<input type="file" accept="image/*" capture="environment" multiple onchange="addDmgPhotos(${i},event)"></label>`:`<div class="muted" style="font-size:12px;">${(d.photos||[]).length} photo(s)</div>`}
+    <div class="thumbs">${(d.photos||[]).map((p,pi)=>thumb(p,pi,'dmg:'+i,editable)).join('')}</div>
+  </div>`;
+}
+
+function wireScopeInputs() {
+  const g = id => document.getElementById(id);
+  g('f_comments').oninput = e => SCOPING.comments = e.target.value;
+  g('f_intermix').onchange = e => SCOPING.intermix = e.target.checked;
+  g('f_traffic').onchange = e => SCOPING.trafficControl = e.target.checked;
+  g('f_service').onchange = e => SCOPING.serviceWorkOnly = e.target.checked;
+  g('f_tree').onchange = e => SCOPING.treeLoppersRequired = e.target.checked;
+  g('f_ndd').onchange = e => SCOPING.nddRequired = e.target.checked;
+  g('f_network').onchange = e => SCOPING.networkCondition = e.target.value;
+}
+
+// ---------- Writes (only field-writable paths, per Security Rules) ----------
+function incRef(id) { return db.ref(ROOT + '/' + id); }
+
+function lockIncident() {
+  const inc = INCIDENTS[OPEN_ID];
+  if (!inc) return;
+  if (statusOf(inc) === 'locked' && inc.lockedBy !== ME) { toast('Already locked by ' + inc.lockedBy); return; }
+  incRef(OPEN_ID).update({ status: 'locked', lockedBy: ME })
+    .then(() => { SCOPING = Object.assign(defaultScoping(), inc.scopingData || {}); toast('Locked — you can scope now'); })
+    .catch(e => toast('Could not lock: ' + e.message));
+}
+function releaseLock() {
+  incRef(OPEN_ID).update({ status: 'available', lockedBy: null })
+    .then(() => { SCOPING = null; toast('Released'); })
+    .catch(e => toast('Error: ' + e.message));
+}
+function saveScoping() {
+  return incRef(OPEN_ID).child('scopingData').set(SCOPING);
+}
+function submitScope() {
+  const inc = INCIDENTS[OPEN_ID];
+  if (!inc) return;
+  if (!(SCOPING.comments || '').trim()) { toast('Scoping comments are required'); return; }
+  if (!(SCOPING.photos || []).length) { toast('At least one site photo is required'); return; }
+  saveScoping()
+    .then(() => incRef(OPEN_ID).update({ status: 'submitted', scopedBy: ME, lockedBy: null, submittedAt: Date.now(), uploaded: true }))
+    .then(() => { SCOPING = null; toast('Submitted ✓'); })
+    .catch(e => toast('Submit failed: ' + e.message));
+}
+
+// ---------- Photos ----------
+async function addSitePhotos(ev) {
+  const files = [...ev.target.files]; ev.target.value = '';
+  for (const f of files) { try { SCOPING.photos.push(await compressImage(f)); } catch(e){} }
+  await saveScoping(); renderScope(); toast('Photo added');
+}
+async function addDmgPhotos(i, ev) {
+  const files = [...ev.target.files]; ev.target.value = '';
+  const d = SCOPING.customerDamage[i]; if (!d.photos) d.photos = [];
+  for (const f of files) { try { d.photos.push(await compressImage(f)); } catch(e){} }
+  await saveScoping(); renderScope();
+}
+function delPhoto(kind, idx) {
+  if (kind === 'site') SCOPING.photos.splice(idx, 1);
+  else if (kind.startsWith('dmg:')) SCOPING.customerDamage[+kind.split(':')[1]].photos.splice(idx, 1);
+  saveScoping().then(renderScope);
+}
+
+// ---------- Damage rows ----------
+function addDmg() { SCOPING.customerDamage.push({ address:'', comments:'', contactMade:false, photos:[] }); saveScoping().then(renderScope); }
+function updDmg(i, k, v) { SCOPING.customerDamage[i][k] = v; saveScoping(); }
+function delDmg(i) { SCOPING.customerDamage.splice(i, 1); saveScoping().then(renderScope); }
+
+// ---------- Utils ----------
+function escapeHtml(s) { return String(s==null?'':s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+let toastT;
+function toast(msg) {
+  const t = document.getElementById('toast'); t.textContent = msg; t.classList.add('show');
+  clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('show'), 2200);
+}
+</script>
+</body>
+</html>
