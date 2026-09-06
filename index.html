@@ -196,6 +196,7 @@ const db = firebase.database();
 
 let ME = '';                 // crew display name (entered at login)
 let CREW_NAME = '';          // name typed on the login form
+let presRef = null;          // this device's presence node in the cloud
 let INCIDENTS = {};          // id -> incident (from cloud)
 let FILTER = 'active';
 let SEARCH = '';             // incident-number search text
@@ -264,13 +265,32 @@ auth.onAuthStateChanged(user => {
     document.getElementById('whoami').textContent = ME;
     document.getElementById('login').classList.add('hidden');
     document.getElementById('app').classList.remove('hidden');
+    publishPresence(user);
     subscribe();
   } else {
+    clearPresence();
     document.getElementById('app').classList.add('hidden');
     document.getElementById('login').classList.remove('hidden');
     document.getElementById('password').value = '';
   }
 });
+
+// ---------- Presence ----------
+// Tell the control center who is signed in on the field side. We write a small
+// record (name + account) to the cloud; firebase_pump.py mirrors it down to the
+// laptop where the control center reads it. onDisconnect() clears it if the tab
+// closes or the connection drops, so the list reflects who is really online.
+function publishPresence(user) {
+  try {
+    const account = (user.email || '').split('@')[0];
+    presRef = db.ref('stormopsPublic/' + ROOM + '/presence/' + user.uid);
+    presRef.onDisconnect().remove();
+    presRef.set({ name: ME, account: account, uid: user.uid, since: Date.now() });
+  } catch (e) { console.warn('presence failed', e); }
+}
+function clearPresence() {
+  if (presRef) { try { presRef.remove(); } catch (e) {} presRef = null; }
+}
 
 // ---------- Data ----------
 function subscribe() {
