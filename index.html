@@ -112,6 +112,11 @@
     <h1>StormOps <span style="color:var(--ee-accent)">Field</span></h1>
     <p>Endeavour Energy — sign in to scope incidents</p>
     <div class="field">
+      <label>Your name</label>
+      <input class="input" id="crewName" type="text" autocomplete="name"
+             autocapitalize="words" autocorrect="off" spellcheck="false" placeholder="e.g. Jordan Smith" />
+    </div>
+    <div class="field">
       <label>Username</label>
       <input class="input" id="email" type="text" autocomplete="username"
              autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="scope1" />
@@ -184,7 +189,8 @@ firebase.initializeApp(FIREBASE_CONFIG);
 const auth = firebase.auth();
 const db = firebase.database();
 
-let ME = '';                 // display name (email local part)
+let ME = '';                 // crew display name (entered at login)
+let CREW_NAME = '';          // name typed on the login form
 let INCIDENTS = {};          // id -> incident (from cloud)
 let FILTER = 'active';
 let OPEN_ID = null;          // currently opened incident id
@@ -215,11 +221,15 @@ function compressImage(file) {
 
 // ---------- Auth ----------
 function doLogin() {
+  const name = document.getElementById('crewName').value.trim();
   let user = document.getElementById('email').value.trim().toLowerCase();
   const pw = document.getElementById('password').value;
   const err = document.getElementById('loginErr');
   err.textContent = '';
+  if (!name) { err.textContent = 'Enter your name.'; return; }
   if (!user || !pw) { err.textContent = 'Enter username and password.'; return; }
+  CREW_NAME = name;
+  try { localStorage.setItem('stormops_field_name', name); } catch (e) {}
   const email = user.includes('@') ? user : user + '@' + FIELD_EMAIL_DOMAIN;
   document.getElementById('loginBtn').disabled = true;
   auth.signInWithEmailAndPassword(email, pw)
@@ -236,9 +246,15 @@ function friendlyAuthError(e) {
   return (e && e.message) || 'Sign-in failed.';
 }
 
+// Prefill the name for returning crews on this device.
+try {
+  const savedName = localStorage.getItem('stormops_field_name');
+  if (savedName) document.getElementById('crewName').value = savedName;
+} catch (e) {}
+
 auth.onAuthStateChanged(user => {
   if (user) {
-    ME = (user.email || 'field').split('@')[0];
+    ME = CREW_NAME || (function(){ try { return localStorage.getItem('stormops_field_name') || ''; } catch (e) { return ''; } })() || (user.email || 'field').split('@')[0];
     document.getElementById('whoami').textContent = ME;
     document.getElementById('login').classList.add('hidden');
     document.getElementById('app').classList.remove('hidden');
@@ -280,7 +296,7 @@ function renderList() {
   document.getElementById('scopeView').classList.add('hidden');
   const list = document.getElementById('incList');
   let items = incArray();
-  if (FILTER === 'active') items = items.filter(i => statusOf(i) === 'available' || (statusOf(i) === 'locked'));
+  if (FILTER === 'active') items = items.filter(i => !!i.toDo && (statusOf(i) === 'available' || statusOf(i) === 'locked'));
   else if (FILTER === 'mine') items = items.filter(i => i.lockedBy === ME || i.scopedBy === ME);
   else if (FILTER === 'submitted') items = items.filter(i => statusOf(i) === 'submitted');
 
@@ -288,7 +304,7 @@ function renderList() {
 
   renderMarkers(items);
 
-  if (!items.length) { list.innerHTML = `<div class="empty">No incidents here yet.</div>`; return; }
+  if (!items.length) { list.innerHTML = `<div class="empty">${FILTER === 'active' ? 'No jobs on the To&nbsp;Do list yet.' : 'No incidents here yet.'}</div>`; return; }
   list.innerHTML = items.map(inc => {
     const st = statusOf(inc);
     const mine = inc.lockedBy === ME;
@@ -316,8 +332,8 @@ function closeScope() { OPEN_ID = null; SCOPING = null; renderList(); }
 function ensureMap() {
   if (fieldMap) return;
   fieldMap = L.map('map', { zoomControl: true }).setView([-34.15, 150.65], 10);
-  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
-    { attribution: '© CartoDB', maxZoom: 19 }).addTo(fieldMap);
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png?key=cb1_2yph_1_87434a7ecd9d66829c062d67',
+    { attribution: '&copy; OpenStreetMap &copy; CARTO', subdomains: 'abcd', maxZoom: 19 }).addTo(fieldMap);
 }
 function incidentColor(inc) {
   const st = statusOf(inc);
