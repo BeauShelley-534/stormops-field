@@ -510,7 +510,7 @@ function submitScope() {
   if (!(SCOPING.comments || '').trim()) { toast('Scoping comments are required'); return; }
   if (!(SCOPING.photos || []).length) { toast('At least one site photo is required'); return; }
   saveScoping()
-    .then(() => incRef(OPEN_ID).update({ status: 'submitted', scopedBy: ME, lockedBy: null, submittedAt: Date.now(), uploaded: true }))
+    .then(() => incRef(OPEN_ID).update({ status: 'submitted', scopedBy: ME, lockedBy: null, submittedAt: Date.now(), uploaded: false }))
     .then(() => { SCOPING = null; toast('Submitted ✓'); })
     .catch(e => toast('Submit failed: ' + e.message));
 }
